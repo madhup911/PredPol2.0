@@ -1,1 +1,11 @@
 streamlit
+requests
+pydeck
+datetime
+pandas
+# libraries for ward calculation
+geopandas
+shapely.geometry
+shapely
+folium
+streamlit_folium
