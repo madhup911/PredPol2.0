@@ -9,14 +9,15 @@ from shapely.geometry import Point
 from shapely import wkt
 import folium
 from streamlit_folium import st_folium
-
+import os
 
 # Page Title
 st.title("Risky Predictive Front")
 
 
 # Function to retrieve the Ward using longitude and latitude
-ward_bound = pd.read_csv("raw_data/WARDS.csv")
+csv_path = os.path.join("raw_data", "WARDS.csv")
+ward_bound = pd.read_csv(csv_path)
 
 # Convert WKT strings to Shapely geometry objects
 ward_bound['the_geom'] = ward_bound['the_geom'].apply(wkt.loads)
