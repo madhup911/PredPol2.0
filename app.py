@@ -193,7 +193,7 @@ if st.session_state.selected_coords:
     selected_coords = st.session_state.selected_coords
     selected_latitude = selected_coords[0]
     selected_longitude = selected_coords[1]
-    selected_ward = find_Ward(selected_latitude,selected_longitude,gdf)
+    selected_ward = find_ward(selected_latitude,selected_longitude,gdf)
     st.write(f"**Latitude:** {selected_latitude}")
     st.write(f"**Longitude:** {selected_longitude}")
     st.write(f"**Ward:** {selected_ward}")
