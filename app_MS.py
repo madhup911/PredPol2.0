@@ -184,62 +184,6 @@ for i, column in enumerate(percentage_columns):
 # Add a layer control to switch between layers
 folium.LayerControl().add_to(m)
 
-
-# # --- Add Layers for Demographic and Income Data ---
-
-#     # Layer for Race-White_pct
-# folium.GeoJson(
-#     gdf,
-#     name="White Population %",
-#     style_function=style_function("Race-White_pct"),
-#     tooltip=folium.GeoJsonTooltip(fields=["Ward", "Race-White_pct"], aliases=["Ward:", "White Population %:"])
-# ).add_to(m)
-
-# # Layer for Race-Black_pct
-# folium.GeoJson(
-#     gdf,
-#     name="Black Population %",
-#     style_function=style_function("Race-Black_pct"),
-#     tooltip=folium.GeoJsonTooltip(fields=["Ward", "Race-Black_pct"], aliases=["Ward:", "Black Population %:"])
-# ).add_to(m)
-
-# # Layer for Race-Asian_pct
-# folium.GeoJson(
-#     gdf,
-#     name="Asian Population %",
-#     style_function=style_function("Race-Asian_pct"),
-#     tooltip=folium.GeoJsonTooltip(fields=["Ward", "Race-Asian_pct"], aliases=["Ward:", "Asian Population %:"])
-# ).add_to(m)
-
-# # Layer for Ethnicity-Hispanic_pct
-# folium.GeoJson(
-#     gdf,
-#     name="Hispanic Ethnicity %",
-#     style_function=style_function("Ethnicity-Hispanic_pct"),
-#     tooltip=folium.GeoJsonTooltip(fields=["Ward", "Ethnicity-Hispanic_pct"], aliases=["Ward:", "Hispanic Ethnicity %:"])
-# ).add_to(m)
-
-# # Layers for Income Distribution
-# income_columns = [
-#     ("Income Below $25K", "Income-24999_minus_pct"),
-#     ("Income $25K-$49K", "Income-25000-49999_pct"),
-#     ("Income $50K-$99K", "Income-50000-99999_pct"),
-#     ("Income $100K-$149K", "Income-100000-149999_pct"),
-#     ("Income $150K Plus", "Income-150000_plus_pct")
-# ]
-
-# for layer_name, column_name in income_columns:
-#     folium.GeoJson(
-#         gdf,
-#         name=layer_name,
-#         style_function=style_function(column_name),
-#         tooltip=folium.GeoJsonTooltip(fields=["Ward", column_name], aliases=["Ward:", f"{layer_name}:"])
-#     ).add_to(m)
-
-# # Add Layer Control and Fullscreen Option
-# folium.LayerControl().add_to(m)
-# Fullscreen().add_to(m)
-
 # Render the map using st_folium
 map_output = st_folium(m, height=450, width=600)
 
