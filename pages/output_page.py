@@ -1,6 +1,6 @@
 import streamlit as st
 import requests
-import plotly.express as px
+import plotly.graph_objects as go
 
 # Output Page: Displaying predictions and visualizations
 st.title("PredPol 2.0 - Output Page")
