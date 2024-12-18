@@ -3,17 +3,17 @@ import requests
 import pydeck as pdk
 from datetime import datetime
 import  pandas as pd
-# libraries for ward calculation
 import geopandas as gpd
 from shapely.geometry import Point
 from shapely import wkt
 import folium
 from streamlit_folium import st_folium
+from datetime import datetime, timedelta
+import plotly.express as px
 import os
 
 # Page Title
 st.title("Risky Predictive Front")
-
 
 # Function to retrieve the Ward using longitude and latitude
 csv_path = os.path.join("raw_data", "WARDS.csv")
@@ -23,7 +23,7 @@ ward_bound = pd.read_csv(csv_path)
 ward_bound['the_geom'] = ward_bound['the_geom'].apply(wkt.loads)
 
 # Create a GeoDataFrame
-gdf = gpd.GeoDataFrame(ward_bound, geometry='the_geom')
+gdf = gpd.GeoDataFrame(ward_bound, geometry='the_geom', crs="EPSG:4326")
 
 # Function to find the ward for a given latitude and longitude
 def find_ward(lat, lon, geodataframe):
@@ -32,16 +32,6 @@ def find_ward(lat, lon, geodataframe):
         if row['the_geom'].contains(point):  # Check if the point is inside the polygon
             return row['WARD']
     return None  # Return None if no ward contains the point
-# Example usage
-#new_lat, new_lon = 41.889, -87.627
-#ward = find_ward(new_lat, new_lon, gdf)
-
-# if ward:
-#     print(f"The point ({new_lat}, {new_lon}) lies in Ward {ward}.")
-# else:
-#     print(f"The point ({new_lat}, {new_lon}) does not lie in any ward.")
-
-
 
 # Introduction
 st.markdown(
@@ -55,119 +45,12 @@ st.markdown(
     3. We call the predictive API to estimate.
     4. View the prediction right here!
 
-    Let's get started 🚔
+    Get Started! :)
     """
 )
 
 # Input Parameters
 st.sidebar.header("Configure Input Parameters")
-
-
-
-
-
-# """ # Load ward data (GeoJSON for Chicago wards, replace with actual GeoJSON URL or file path)
-# geojson_url = "https://data.cityofchicago.org/resource/igwz-8jzy.geojson"  # Updated GeoJSON URL for Chicago wards
-# try:
-#     response = requests.get(geojson_url)
-#     response.raise_for_status()
-#     wards_data = response.json()
-#     if 'features' in wards_data:
-#         wards = [
-#             {
-#                 "ward": feature['properties'].get('ward', 'Unknown Ward'),
-#                 "centroid": feature['geometry']['coordinates'][0][0] if feature['geometry'] else [0, 0]
-#             }
-#             for feature in wards_data['features']
-#         ]
-#     else:
-#         wards = []
-#         st.error("GeoJSON does not contain 'features'. Check the data source.")
-# except requests.RequestException as e:
-#     wards = []
-#     st.warning("Failed to load ward data. Interactive map will not display.")
-
-# # Display interactive map
-# if wards:
-#     ward_data = [
-#         {"ward": ward["ward"], "lon": centroid[0], "lat": centroid[1]}
-#         for ward, centroid in [(w, w["centroid"]) for w in wards]
-#     ]
-#     ward_df = pd.DataFrame(ward_data)
-
-#     st.pydeck_chart(pdk.Deck(
-#         map_style="mapbox://styles/mapbox/light-v9",
-#         initial_view_state=pdk.ViewState(
-#             latitude=41.8781,  # Centered near Chicago
-#             longitude=-87.6298,
-#             zoom=10,
-#             pitch=50,
-#         ),
-#         layers=[
-#             pdk.Layer(
-#                 "ScatterplotLayer",
-#                 data=ward_df,
-#                 get_position="[lon, lat]",
-#                 get_color="[200, 30, 0, 160]",
-#                 get_radius=200,
-#                 pickable=True,
-#             ),
-#         ],
-#     ))
-#     selected_ward = st.sidebar.selectbox(
-#         "Select Ward", [ward["ward"] for ward in wards]
-#     )
-# else:
-#     selected_ward = st.sidebar.selectbox("Select Ward", options=["Ward data unavailable"])
-# '''
-# """
-
-# Streamlit app
-#st.title("Interactive Map of Chicago")
-# st.write("Click on any point on the map to get the longitude and latitude of the point.")
-
-# # Initialize the map centered on Chicago
-# chicago_coords = [41.8781, -87.6298]  # Latitude and Longitude of Chicago
-# m = folium.Map(location=chicago_coords, zoom_start=11)
-
-# # Add instructions to the map
-# folium.Marker(
-#     chicago_coords,
-#     popup="You can click anywhere on this map!",
-#     tooltip="Chicago Center",
-# ).add_to(m)
-
-# folium.LatLngPopup().add_to(m)
-
-# # Render the map using st_folium
-# st.write("Map of Chicago:")
-# output = st_folium(m, height=500, width=700)
-
-# st.write("Debugging Output (Full Map Data):")
-# st.json(output)  # Provides a cleaner JSON format for nested structures
-
-# if output is not None:
-#     if 'last_clicked' in output and output['last_clicked'] is not None:
-#         st.write("You clicked on the point:")
-#         st.write(f"**Latitude:** {output['last_clicked']['lat']}")
-#         st.write(f"**Longitude:** {output['last_clicked']['lng']}")
-#     else:
-#         st.write("Click anywhere on the map to see the coordinates.")
-# else:
-#     st.write("Map output not available. Please refresh the page.")
-
-# if 'clicked_coords' not in st.session_state:
-#     st.session_state.clicked_coords = None
-
-# if output and 'last_clicked' in output and output['last_clicked']:
-#     st.session_state.clicked_coords = output['last_clicked']
-
-# if st.session_state.clicked_coords:
-#     st.write("You clicked on the point:")
-#     st.write(f"**Latitude:** {st.session_state.clicked_coords['lat']}")
-#     st.write(f"**Longitude:** {st.session_state.clicked_coords['lng']}")
-# else:
-#     st.write("Click anywhere on the map to see the coordinates.")
 
 
 # Initialize session state for coordinates
@@ -179,50 +62,38 @@ if 'selected_coords' not in st.session_state:
 def get_pos(lat, lng):
     return lat, lng
 
-# Create a map centered on Chicago
+# Sample Chicago coordinates
+chicago_coords = [41.8781, -87.6298]
 
-# Initialize session state for clicked ward and geometry
-# if 'selected_ward' not in st.session_state:
-#     st.session_state.selected_ward = None
-
-# if 'selected_geometry' not in st.session_state:
-#     st.session_state.selected_geometry = None
-
-
-
-
-chicago_coords = [41.8781, -87.6298]  # Latitude and Longitude of Chicago
+# Create the Folium map centered on Chicago
 m = folium.Map(location=chicago_coords, zoom_start=10)
-m.add_child(folium.LatLngPopup())  # Add click listener
 
+# Add ward boundaries to the map with custom highlighting
+def style_function(feature):
+    """Default style for all ward boundaries."""
+    return {
+        "fillColor": "#ADD8E6",  # Light blue fill
+        "color": "blue",         # Default boundary color
+        "weight": 1.5,           # Default line weight
+        "fillOpacity": 0.2,      # Slight transparency
+    }
 
-
-# Add ward boundaries to the map
-# Set the CRS for the GeoDataFrame (assuming data is in WGS 84)
-gdf = gdf.set_crs(epsg=4326)
-
-# Transform to a projected CRS for centroid calculation
-#gdf_projected = gdf.to_crs(epsg=3857)
+def highlight_function(feature):
+    """Style applied when a ward boundary is clicked or hovered."""
+    return {
+        "fillColor": "#FF0000",  # Red fill for the clicked ward
+        "color": "red",          # Red boundary color
+        "weight": 3,             # Thicker boundary line
+        "fillOpacity": 0.4,      # Slightly more opaque fill
+    }
 
 folium.GeoJson(
-    gdf,  # GeoDataFrame
+    gdf,
     name="Ward Boundaries",
-    highlight_function=None,
-    tooltip=folium.features.GeoJsonTooltip(fields=["WARD"], aliases=["Ward:"])
+    tooltip=folium.features.GeoJsonTooltip(fields=["WARD"], aliases=["Ward:"]),
+    style_function=style_function,
+    highlight_function=highlight_function,  # Custom highlight on interaction
 ).add_to(m)
-
-# Add labels for each ward (calculate centroids using projected CRS)
-# for _, row in gdf_projected.iterrows():
-#     if row['geometry'].is_valid:
-#         # Calculate centroid of the geometry
-#         centroid = row['geometry'].centroid
-#         # Convert centroid back to WGS 84
-#         centroid_wgs84 = gpd.GeoSeries([centroid], crs=3857).to_crs(epsg=4326).iloc[0]
-#         folium.Marker(
-#             location=[centroid_wgs84.y, centroid_wgs84.x],
-#             popup=f"Ward: {row['WARD']}",
-#             icon=folium.DivIcon(html=f"""<div style="font-size: 10px; color: black;">{row['WARD']}</div>""")
-#         ).add_to(m)
 
 # Render the map using st_folium
 map_output = st_folium(m, height=550, width=700)
@@ -242,27 +113,54 @@ if map_output.get('last_clicked'):
 # Display coordinates
 if st.session_state.selected_coords:
     selected_coords = st.session_state.selected_coords
-    #pickup_latitude = st.number_input('Pickup Latitude', value=pickup_coords[0], format="%.6f")
-    #pickup_longitude = st.number_input('Pickup Longitude', value=pickup_coords[1], format="%.6f")
     selected_latitude = selected_coords[0]
     selected_longitude = selected_coords[1]
+    selected_ward = find_ward(selected_latitude,selected_longitude,gdf)
     st.write(f"**Latitude:** {selected_latitude}")
     st.write(f"**Longitude:** {selected_longitude}")
-    latitude = selected_latitude
-    longitude = selected_longitude
-    selected_ward = find_ward(selected_latitude, selected_longitude, gdf)
-    #print ("selected ward is  ", selected_ward)
+    st.write(f"**Ward:** {selected_ward}")
 else:
     st.write("Click on the map to select a location.")
 
-# Time category selection
-time_category = st.sidebar.selectbox(
-    "Time Category",
-    ["Early Morning", "Late Morning", "Early Noon", "Late Noon", "Early Evening", "Late Evening"],
-    index=0
-)
-# Date input
-date = st.sidebar.date_input("Date")
+
+
+# Function to return middle time for a range based on category
+def get_middle_time_for_category(category, selected_date):
+    time_ranges = {
+        "Late Evening": (0, 6),     # Midnight (00:00) to 06:00
+        "Early Morning": (6, 9),    # 06:00 to 09:00
+        "Late Morning": (9, 12),    # 09:00 to 12:00
+        "Early Noon": (12, 15),     # 12:00 to 15:00
+        "Late Noon": (15, 18),      # 15:00 to 18:00
+        "Early Evening": (18, 24)   # 18:00 to Midnight (24:00)
+    }
+
+    # Get the time range for the selected category
+    if category in time_ranges:
+        start_hour, end_hour = time_ranges[category]
+        middle_hour = (start_hour + end_hour) / 2
+
+        # Convert to a datetime object with selected date
+        middle_time = datetime.combine(selected_date, datetime.min.time()) + timedelta(hours=middle_hour)
+        return middle_time.strftime("%Y-%m-%d %H:%M")  # Format as Date and Time string (24-hour format)
+
+    return None
+
+# Sidebar: Date picker
+selected_date = st.sidebar.date_input("Select a Date", datetime.today())
+
+# Sidebar: Dropdown for categories
+categories = ["Late Evening", "Early Morning", "Late Morning", "Early Noon", "Late Noon", "Early Evening"]
+selected_category = st.sidebar.selectbox("Select a Time Category", categories)
+
+# Get and display the middle time
+if selected_category:
+    middle_time = get_middle_time_for_category(selected_category, selected_date)
+    if middle_time:
+        st.write(f"### Selected Category: **{selected_category}**")
+        st.write(f"Time: **{middle_time}**")
+    else:
+        st.error("Invalid Category Selected!")
 
 # Latitude and Longitude input
 #latitude = st.sidebar.number_input("Latitude", format="%f")
@@ -270,10 +168,10 @@ date = st.sidebar.date_input("Date")
 
 
 # Determine if the date is a weekend
-def is_weekend(date_obj):
-    return "Yes" if date_obj.weekday() >= 5 else "No"
+# def is_weekend(date_obj):
+#     return "Yes" if date_obj.weekday() >= 5 else "No"
 
-weekend = is_weekend(date)
+# weekend = is_weekend(selected_date)
 
 # API URL
 api_url = st.text_input("API URL", "https://rpp-589897242504.europe-west1.run.app/predict")
@@ -286,31 +184,11 @@ st.markdown(
     """
 )
 
-# Call API and Get Prediction
+# Save inputs when "Submit" button is clicked
 if st.button("Get Prediction"):
-    if api_url and selected_ward and time_category and latitude and longitude:
-        # Prepare API request payload
-        payload = {
-            "ward": selected_ward,
-            "time_category": time_category,
-            "date": date.strftime("%Y-%m-%d"),
-            "weekend": weekend,
-            "latitude": latitude,
-            "longitude": longitude,
-        }
-        st.write(payload)
-        try:
-            # Make API request
-            response = requests.post(api_url, json=payload)
-            response_data = response.json()
-
-            # Display Prediction
-            if response.status_code == 200:
-                prediction = response_data["offense_prediction"]
-                st.success(f"The predicted offense likelihood is: {prediction:.2f}")
-            else:
-                st.error("Failed to retrieve a valid prediction. Please check your inputs or API.")
-        except Exception as e:
-            st.error(f"An error occurred: {e}")
-    else:
-        st.warning("Please ensure all parameters are filled out correctly.")
+    st.session_state["selected_ward"] = selected_ward
+    st.session_state["middle_time"] = str(middle_time)
+    st.session_state["selected_latitude"] = selected_latitude
+    st.session_state["selected_longitude"] = selected_longitude
+    st.session_state["api_url"] = api_url
+    st.success("Inputs saved! Go to the Output Page to see predictions.")
