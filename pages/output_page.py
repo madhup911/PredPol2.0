@@ -62,8 +62,9 @@ if all([selected_ward, middle_time, selected_latitude, selected_longitude, api_u
                     xaxis_title="Crimes",
                     yaxis_title="Percentage (%)",
                     xaxis=dict(tickangle=-45),  # Rotate x-axis labels
+                    yaxis=dict(range=[0, max(percentages) * 1.1]),  # Extend y-axis range by 10%
                     template="plotly_white"  # Clean white background style
-                )
+                    )
 
                     # Display the chart in Streamlit
                 st.plotly_chart(fig, use_container_width=True)
