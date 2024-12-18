@@ -3,7 +3,7 @@ import requests
 import plotly.express as px
 
 # Output Page: Displaying predictions and visualizations
-st.title("Risky Predictive Web App - Output Page")
+st.title("PredPol 2.0 - Output Page")
 
 # Retrieving inputs from session state
 selected_ward = st.session_state.get("selected_ward")
@@ -21,55 +21,55 @@ if all([selected_ward, middle_time, selected_latitude, selected_longitude, api_u
     st.write(f"**Longitude:** {selected_longitude}")
 
     # API call and Get Prediction
-    if st.button("Get Prediction"):
-        payload = {
-            "ward": selected_ward,
-            "date_of_occurrence": middle_time,
-            "latitude": selected_latitude,
-            "longitude": selected_longitude,
+    if st.sidebar.button("Get Prediction"):
+        if api_url and selected_ward and middle_time and selected_latitude and selected_longitude:
+        # Prepare API request payload
+            payload = {
+                "ward": selected_ward,
+                "date_of_occurrence": middle_time,
+                "latitude": selected_latitude,
+                "longitude": selected_longitude,
         }
-        st.write("### Payload Sent to API")
+        st.sidebar.write("### Payload Sent to API")
         st.json(payload)
-
         try:
             # Make API request
             response = requests.post(api_url, json=payload)
             response_data = response.json()
 
             if response.status_code == 200:
+                # Prepare data
+                labels = list(response_data['Top 5 Crimes'].keys())
+                values = list(response_data['Top 5 Crimes'].values())
+              # Convert values to percentages
+                percentages = [v * 100 for v in values]
 
-                # Displaying Offense Count Prediction (Regression Output)
-                offense_count = response_data.get("offense_count", None)
-                if offense_count is not None:
-                    st.write("### Predicted Offense Count")
-                    st.success(f"The predicted number of offenses is approximately: {offense_count:.0f}")
-                else:
-                    st.warning("No offense count prediction available.")
+                # Create a bar chart with Plotly
+                fig = go.Figure()
 
-                # Visualization logic (Top 5 Crimes)
-                top_crimes = response_data.get('Top 5 Crimes', {})
-                if top_crimes:
-                    labels = list(top_crimes.keys())
-                    values = list(top_crimes.values())
+                # Add bars
+                fig.add_trace(go.Bar(
+                    x=labels,
+                    y=percentages,
+                    text=[f"{p:.1f}%" for p in percentages],  # Display percentages on bars
+                    textposition='outside',  # Position text outside the bars
+                    marker_color='skyblue'
+                ))
 
-                    # Create the bar chart
-                    fig = px.bar(
-                        x=labels,
-                        y=values,
-                        labels={'x': 'Crimes', 'y': 'Frequency'},
-                        title="Top 5 Crimes",
-                        text=values
-                    )
-                    fig.update_layout(xaxis_tickangle=-45)
-                    fig.update_traces(texttemplate='%{text}', textposition='outside')
+                # Customize layout
+                fig.update_layout(
+                    title="Top 5 Crimes as Percentage",
+                    xaxis_title="Crimes",
+                    yaxis_title="Percentage (%)",
+                    xaxis=dict(tickangle=-45),  # Rotate x-axis labels
+                    template="plotly_white"  # Clean white background style
+                )
 
-                    # Display the chart
-                    st.plotly_chart(fig, use_container_width=True)
-                else:
-                    st.warning("No crime data available in the response.")
+                    # Display the chart in Streamlit
+                st.plotly_chart(fig, use_container_width=True)
             else:
-                st.error("Failed to retrieve a valid prediction. Please check your inputs or API.")
+                st.sidebar.error("Failed to retrieve a valid prediction. Please check your inputs or API.")
         except Exception as e:
-            st.error(f"An error occurred: {e}")
-else:
-    st.warning("Please provide inputs on the Input Page before accessing predictions.")
+            st.sidebar.error(f"An error occurred: {e}")
+    else:
+        st.sidebar.warning("Please ensure all parameters are filled out correctly.")

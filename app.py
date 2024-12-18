@@ -9,14 +9,17 @@ from shapely import wkt
 import folium
 from streamlit_folium import st_folium
 from datetime import datetime, timedelta
-import plotly.express as px
+import plotly.graph_objects as go
+from folium import LayerControl
+from folium.plugins import Fullscreen
+import branca.colormap as cm  # For generating color maps
 import os
 
 # Page Title
-st.title("Risky Predictive Front")
+st.title("PredPol 2.0")
 
 # Function to retrieve the Ward using longitude and latitude
-csv_path = os.path.join("raw_data", "WARDS.csv")
+csv_path = os.path.join("raw_data", "ward_demographics_boundaries.csv")
 ward_bound = pd.read_csv(csv_path)
 
 # Convert WKT strings to Shapely geometry objects
@@ -36,14 +39,18 @@ def find_ward(lat, lon, geodataframe):
 # Introduction
 st.markdown(
     """
-    Welcome to the **Risky Predictive Front**! This app allows you to interact with a predictive model for predicting offenses.
-    Simply provide the required parameters below, and you'll receive a prediction instantly.
+    PredPol 2.0 uses predictive analytics to forecast crimes in Chicago. Based on your inputs, it can predict:
 
-    ### How It Works
-    1. Select a ward from the interactive map.
-    2. Specify the necessary details.
-    3. We call the predictive API to estimate.
-    4. View the prediction right here!
+    1.The top 5 most likely crime offenses
+    2.The number of crime incidents predicted for the next 24 hours
+
+    To enhance transparency, PredPol 2.0 also provides demographic details related to the prediction.
+    Our model is trained on the 2023-2024 crime dataset from the Chicago Data Portal. We sourced demographic data from the American Community Survey, but this was not used in the training process. Please note: The crime dataset used is not free from bias, and the model has been trained on this data as-is. We understand there may be continued efforts to improve predictive policing technology to address these challenges. In any case, inherent biases in historical crime data remains a primary concern.
+    This application is not affiliated with Geolitica (formerly PredPol, Inc.) and was developed as part of a research project during a Le Wagon Data Science & AI Bootcamp.
+        ### How to Use
+        1-Select a ward on the interactive map.
+        2-Choose a date and time.
+        3-Click “Get Prediction.”
 
     Get Started! :)
     """
@@ -62,38 +69,109 @@ if 'selected_coords' not in st.session_state:
 def get_pos(lat, lng):
     return lat, lng
 
-# Sample Chicago coordinates
-chicago_coords = [41.8781, -87.6298]
+# # Sample Chicago coordinates
+# # chicago_coords = [41.8781, -87.6298]
 
-# Create the Folium map centered on Chicago
+# # Create the Folium map centered on Chicago
+# m = folium.Map(location=chicago_coords, zoom_start=10)
+
+# # Add ward boundaries to the map with custom highlighting
+# def style_function(feature):
+#     """Default style for all ward boundaries."""
+#     return {
+#         "fillColor": "#ADD8E6",  # Light blue fill
+#         "color": "blue",         # Default boundary color
+#         "weight": 1.5,           # Default line weight
+#         "fillOpacity": 0.2,      # Slight transparency
+#     }
+
+# def highlight_function(feature):
+#     """Style applied when a ward boundary is clicked or hovered."""
+#     return {
+#         "fillColor": "#FF0000",  # Red fill for the clicked ward
+#         "color": "red",          # Red boundary color
+#         "weight": 3,             # Thicker boundary line
+#         "fillOpacity": 0.4,      # Slightly more opaque fill
+#     }
+
+# folium.GeoJson(
+#     gdf,
+#     name="Ward Boundaries",
+#     tooltip=folium.features.GeoJsonTooltip(fields=["WARD"], aliases=["Ward:"]),
+#     style_function=style_function,
+#     highlight_function=highlight_function,  # Custom highlight on interaction
+# ).add_to(m)
+
+def create_layer(gdf, column_name, layer_name, show_layer=False):
+    """
+    Creates a Folium GeoJson layer with dynamic color styling based on column values.
+
+    Parameters:
+    - gdf: GeoDataFrame containing the data
+    - column_name: Column name in the GeoDataFrame for styling
+    - layer_name: Name of the layer to display on the map
+    """
+    # Create a color map ranging from green (low) to red (high)
+    colormap = cm.LinearColormap(['green', 'yellow', 'red'],
+                                 vmin=gdf[column_name].min(),
+                                 vmax=gdf[column_name].max())
+
+    # Define the style function using the colormap
+    def style_function(feature):
+        value = feature['properties'][column_name]
+        return {
+            "fillColor": colormap(value),
+            "color": "blue",       # Boundary color
+            "weight": 1.5,         # Line weight
+            "fillOpacity": 0.6,    # Transparency
+        }
+
+    # Define the highlight function
+    def highlight_function(feature):
+        return {
+            "fillColor": colormap(feature['properties'][column_name]),
+            "color": "red",        # Highlight boundary color
+            "weight": 2,           # Slightly thicker boundary
+            "fillOpacity": 0.8,    # Less transparency when highlighted
+        }
+
+    # Add the GeoJson layer to the map
+    folium.GeoJson(
+        gdf,
+        name=layer_name,
+        tooltip=folium.features.GeoJsonTooltip(
+            fields=["Ward"] + percentage_columns,  # Include all percentage columns in the tooltip
+            aliases=["Ward:"] + [f"{col}:" for col in percentage_columns],  # Add column aliases
+            localize=True
+        ),
+        style_function=style_function,
+        highlight_function=highlight_function,
+        show=show_layer,  # Control whether the layer is shown initially
+    ).add_to(m)
+
+# Create the map
+chicago_coords = [41.8781, -87.6298]  # Latitude and Longitude of Chicago
 m = folium.Map(location=chicago_coords, zoom_start=10)
 
-# Add ward boundaries to the map with custom highlighting
-def style_function(feature):
-    """Default style for all ward boundaries."""
-    return {
-        "fillColor": "#ADD8E6",  # Light blue fill
-        "color": "blue",         # Default boundary color
-        "weight": 1.5,           # Default line weight
-        "fillOpacity": 0.2,      # Slight transparency
-    }
+# Add layers for each percentage column
+percentage_columns = [
+    "Race-White_pct",
+    "Race-Black_pct",
+    "Race-Asian_pct",
+    "Ethnicity-Hispanic_pct",
+    "Income-24999_minus_pct",
+    "Income-25000-49999_pct",
+    "Income-50000-99999_pct",
+    "Income-100000-149999_pct",
+    "Income-150000_plus_pct"
+]
 
-def highlight_function(feature):
-    """Style applied when a ward boundary is clicked or hovered."""
-    return {
-        "fillColor": "#FF0000",  # Red fill for the clicked ward
-        "color": "red",          # Red boundary color
-        "weight": 3,             # Thicker boundary line
-        "fillOpacity": 0.4,      # Slightly more opaque fill
-    }
+# Load only the first layer by default, others will be hidden initially
+for i, column in enumerate(percentage_columns):
+    create_layer(gdf, column, column, show_layer=(i == 0))  # Show only the first layer
 
-folium.GeoJson(
-    gdf,
-    name="Ward Boundaries",
-    tooltip=folium.features.GeoJsonTooltip(fields=["WARD"], aliases=["Ward:"]),
-    style_function=style_function,
-    highlight_function=highlight_function,  # Custom highlight on interaction
-).add_to(m)
+# Add a layer control to switch between layers
+folium.LayerControl().add_to(m)
 
 # Render the map using st_folium
 map_output = st_folium(m, height=550, width=700)
