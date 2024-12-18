@@ -1,4 +1,10 @@
 streamlit
+folium
+geopandas
+shapely
+streamlit_folium
+datetime
+plotly
 requests
 pydeck
 datetime
@@ -10,3 +16,4 @@ shapely
 folium
 streamlit_folium
 plotly>=5.0.0
+branca
