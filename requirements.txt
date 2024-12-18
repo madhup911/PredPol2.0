@@ -5,3 +5,15 @@ shapely
 streamlit_folium
 datetime
 plotly
+requests
+pydeck
+datetime
+pandas
+# libraries for ward calculation
+geopandas
+shapely
+shapely
+folium
+streamlit_folium
+plotly>=5.0.0
+branca
