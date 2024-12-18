@@ -33,7 +33,7 @@ def find_ward(lat, lon, geodataframe):
     point = Point(lon, lat)  # Create a Point (longitude first)
     for _, row in geodataframe.iterrows():
         if row['the_geom'].contains(point):  # Check if the point is inside the polygon
-            return row['WARD']
+            return row['Ward']
     return None  # Return None if no ward contains the point
 
 # Introduction
@@ -97,7 +97,7 @@ def get_pos(lat, lng):
 # folium.GeoJson(
 #     gdf,
 #     name="Ward Boundaries",
-#     tooltip=folium.features.GeoJsonTooltip(fields=["WARD"], aliases=["Ward:"]),
+#     tooltip=folium.features.GeoJsonTooltip(fields=["Ward"], aliases=["Ward:"]),
 #     style_function=style_function,
 #     highlight_function=highlight_function,  # Custom highlight on interaction
 # ).add_to(m)
@@ -193,7 +193,7 @@ if st.session_state.selected_coords:
     selected_coords = st.session_state.selected_coords
     selected_latitude = selected_coords[0]
     selected_longitude = selected_coords[1]
-    selected_ward = find_ward(selected_latitude,selected_longitude,gdf)
+    selected_ward = find_Ward(selected_latitude,selected_longitude,gdf)
     st.write(f"**Latitude:** {selected_latitude}")
     st.write(f"**Longitude:** {selected_longitude}")
     st.write(f"**Ward:** {selected_ward}")
