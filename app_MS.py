@@ -15,6 +15,7 @@ import branca.colormap as cm  # For generating color maps
 from branca.colormap import LinearColormap
 from functools import partial
 import os
+from branca.element import Template, MacroElement
 
 # Page Title
 st.title("Risky Predictive Front")
@@ -65,6 +66,10 @@ st.sidebar.header("Configure Input Parameters")
 if 'selected_coords' not in st.session_state:
     st.session_state.selected_coords = None
 
+# Initialize session state for scrolling
+if "scroll_to_graph" not in st.session_state:
+    st.session_state.scroll_to_graph = False
+
 # Function to get position as a tuple
 @st.cache_data
 def get_pos(lat, lng):
@@ -73,79 +78,82 @@ def get_pos(lat, lng):
 # Load data
 gdf = load_and_process_data(csv_path)
 
-# Define a standalone style function
-def style_function(feature, colormap, column_name):
-    value = feature['properties'][column_name]
-    return {
-        "fillColor": colormap(value),
-        "color": "blue",        # Boundary color
-        "weight": 1.5,          # Line weight
-        "fillOpacity": 0.6,     # Transparency
-    }
 
-# Define a highlight function
-def highlight_function(feature, colormap, column_name):
-    value = feature['properties'][column_name]
-    return {
-        "fillColor": colormap(value),
-        "color": "red",         # Highlight boundary color
-        "weight": 2,            # Slightly thicker boundary
-        "fillOpacity": 0.8,     # Less transparency when highlighted
-    }
-
-# Function to create a layer
+# Define the function to create layers with a legend
 def create_layer(gdf, column_name, layer_name, show_layer=False):
-    """
-    Creates a Folium GeoJson layer with dynamic color styling based on column values.
-    """
-    # Calculate min and max values for the column
-    vmin = gdf[column_name].min()
-    vmax = gdf[column_name].max()
+    colormap = LinearColormap(['green', 'yellow', 'red'],
+                              vmin=0, vmax=100,
+                          caption='Percentage (%)')  # Add caption for the legend
 
-    # Create a colormap
-    colormap = LinearColormap(['green', 'yellow', 'red'], vmin=vmin, vmax=vmax)
+    def style_function(feature):
+        value = feature['properties'][column_name]
+        return {
+            "fillColor": colormap(value),
+            "color": "blue",
+            "weight": 1.5,
+            "fillOpacity": 0.6,
+        }
 
-    # Use partial to pass fixed arguments to the style functions
-    layer_style_function = partial(style_function, colormap=colormap, column_name=column_name)
-    layer_highlight_function = partial(highlight_function, colormap=colormap, column_name=column_name)
+    def highlight_function(feature):
+        return {
+            "fillColor": colormap(feature['properties'][column_name]),
+            "color": "red",
+            "weight": 2,
+            "fillOpacity": 0.8,
+        }
 
-    # Add the GeoJson layer to the map
-    folium.GeoJson(
+    # Add the GeoJSON layer to the map with tooltips and the defined style
+    layer = folium.GeoJson(
         gdf,
         name=layer_name,
         tooltip=folium.features.GeoJsonTooltip(
-            fields=["Ward"] + percentage_columns,
-            aliases=["Ward:"] + [f"{col}:" for col in percentage_columns],
+            fields=["Ward", column_name],
+            aliases=["Ward:", f"{layer_name} :"],
             localize=True
         ),
-        style_function=layer_style_function,
-        highlight_function=layer_highlight_function,
-        show=show_layer,  # Control whether the layer is shown initially
+        style_function=style_function,
+        highlight_function=highlight_function,
+        show=show_layer,  # Show this layer only if `show_layer` is True
     ).add_to(m)
 
-# Percentage columns to visualize
-percentage_columns = [
-    "Race-White_pct",
-    "Race-Black_pct",
-    "Race-Asian_pct",
-    "Ethnicity-Hispanic_pct",
-    "Income-24999_minus_pct",
-    "Income-25000-49999_pct",
-    "Income-50000-99999_pct",
-    "Income-100000-149999_pct",
-    "Income-150000_plus_pct"
-]
+    # Add colormap (legend) to the map only when the layer is active
+    if show_layer:
+        colormap.add_to(m)
 
-# Create the map
-chicago_coords = [41.8781, -87.6298]  # Latitude and Longitude of Chicago
+# Initialize map
+chicago_coords = [41.8781, -87.6298]
 m = folium.Map(location=chicago_coords, zoom_start=10)
 
-# Load only the first layer by default
-for i, column in enumerate(percentage_columns):
-    create_layer(gdf, column, column, show_layer=(i == 0))  # Show only the first layer
+# Define GeoDataFrame and column mappings
 
-# Add a layer control to switch between layers
+percentage_columns = [
+    "Race-White_pct", "Race-Black_pct", "Race-Asian_pct",
+    "Ethnicity-Hispanic_pct", "Income-24999_minus_pct",
+    "Income-25000-49999_pct", "Income-50000-99999_pct",
+    "Income-100000-149999_pct", "Income-150000_plus_pct"
+]
+layer_name_mapping = {
+    "Race-White_pct": "White Population (%)",
+    "Race-Black_pct": "Black Population (%)",
+    "Race-Asian_pct": "Asian Population (%)",
+    "Ethnicity-Hispanic_pct": "Hispanic Population (%)",
+    "Income-24999_minus_pct": "Income <$25k (%)",
+    "Income-25000-49999_pct": "Income $25k-$50k (%)",
+    "Income-50000-99999_pct": "Income $50k-$100k (%)",
+    "Income-100000-149999_pct": "Income $100k-$150k (%)",
+    "Income-150000_plus_pct": "Income >$150k (%)"
+}
+
+# Add layers with readable names and a legend
+for i, column in enumerate(percentage_columns):
+    friendly_name = layer_name_mapping.get(column, column)
+    create_layer(gdf, column, friendly_name, show_layer=(i == 0))
+
+# Add LayerControl to switch layers
 folium.LayerControl().add_to(m)
+
+# Save the map
+m.save("map_with_legend.html")
 
 # Render the map using st_folium
 map_output = st_folium(m, height=450, width=600)
@@ -165,105 +173,6 @@ if st.session_state.get('selected_coords'):
     #st.sidebar.write(f"**Ward:** {selected_ward if selected_ward else 'Not Found'}")
 else:
     st.sidebar.write("Click on the map to select a location.")
-
-# def create_layer(gdf, column_name, layer_name, show_layer=False):
-#     """
-#     Creates a Folium GeoJson layer with dynamic color styling based on column values.
-
-#     Parameters:
-#     - gdf: GeoDataFrame containing the data
-#     - column_name: Column name in the GeoDataFrame for styling
-#     - layer_name: Name of the layer to display on the map
-#     """
-#     # Create a color map ranging from green (low) to red (high)
-#     colormap = cm.LinearColormap(['green', 'yellow', 'red'],
-#                                  vmin=gdf[column_name].min(),
-#                                  vmax=gdf[column_name].max())
-
-#     # Define the style function using the colormap
-#     def style_function(feature):
-#         value = feature['properties'][column_name]
-#         return {
-#             "fillColor": colormap(value),
-#             "color": "blue",       # Boundary color
-#             "weight": 1.5,         # Line weight
-#             "fillOpacity": 0.6,    # Transparency
-#         }
-
-#     # Define the highlight function
-#     def highlight_function(feature):
-#         return {
-#             "fillColor": colormap(feature['properties'][column_name]),
-#             "color": "red",        # Highlight boundary color
-#             "weight": 2,           # Slightly thicker boundary
-#             "fillOpacity": 0.8,    # Less transparency when highlighted
-#         }
-
-#     # Add the GeoJson layer to the map
-#     folium.GeoJson(
-#         gdf,
-#         name=layer_name,
-#         tooltip=folium.features.GeoJsonTooltip(
-#             fields=["Ward"] + percentage_columns,  # Include all percentage columns in the tooltip
-#             aliases=["Ward:"] + [f"{col}:" for col in percentage_columns],  # Add column aliases
-#             localize=True
-#         ),
-#         style_function=style_function,
-#         highlight_function=highlight_function,
-#         show=show_layer,  # Control whether the layer is shown initially
-#     ).add_to(m)
-
-# # Create the map
-# chicago_coords = [41.8781, -87.6298]  # Latitude and Longitude of Chicago
-# m = folium.Map(location=chicago_coords, zoom_start=10)
-
-# # Add layers for each percentage column
-# percentage_columns = [
-#     "Race-White_pct",
-#     "Race-Black_pct",
-#     "Race-Asian_pct",
-#     "Ethnicity-Hispanic_pct",
-#     "Income-24999_minus_pct",
-#     "Income-25000-49999_pct",
-#     "Income-50000-99999_pct",
-#     "Income-100000-149999_pct",
-#     "Income-150000_plus_pct"
-# ]
-
-# # Load only the first layer by default, others will be hidden initially
-# for i, column in enumerate(percentage_columns):
-#     create_layer(gdf, column, column, show_layer=(i == 0))  # Show only the first layer
-
-
-# # Add a layer control to switch between layers
-# folium.LayerControl().add_to(m)
-
-# # Render the map using st_folium
-# map_output = st_folium(m, height=450, width=600)
-
-# # Function to get clicked latitude
-# def get_click_lat():
-#     return map_output['last_clicked']['lat']
-
-# # Function to get clicked longitude
-# def get_click_lng():
-#     return map_output['last_clicked']['lng']
-
-# # Handle map clicks
-# if map_output.get('last_clicked'):
-#     st.session_state.selected_coords = get_pos(get_click_lat(), get_click_lng())
-
-# # Display coordinates
-# if st.session_state.selected_coords:
-#     selected_coords = st.session_state.selected_coords
-#     selected_latitude = selected_coords[0]
-#     selected_longitude = selected_coords[1]
-#     selected_ward = find_ward(selected_latitude,selected_longitude,gdf)
-#     st.sidebar.write(f"**Latitude:** {selected_latitude}")
-#     st.sidebar.write(f"**Longitude:** {selected_longitude}")
-#     st.sidebar.write(f"**Ward:** {selected_ward}")
-# else:
-#     st.sidebar.write("Click on the map to select a location.")
 
 
 
@@ -306,16 +215,6 @@ if selected_category:
     else:
         st.sidebar.error("Invalid Category Selected!")
 
-# Latitude and Longitude input
-#latitude = st.sidebar.number_input("Latitude", format="%f")
-#longitude = st.sidebar.number_input("Longitude", format="%f")
-
-
-# Determine if the date is a weekend
-# def is_weekend(date_obj):
-#     return "Yes" if date_obj.weekday() >= 5 else "No"
-
-# weekend = is_weekend(selected_date)
 
 # API URL
 api_url = "https://rpp2-589897242504.europe-west1.run.app/predict"
@@ -338,59 +237,48 @@ if st.sidebar.button("Get Prediction"):
             "latitude": selected_lat,
             "longitude": selected_lon,
         }
-        #st.write(payload)
+
+        # Show payload in sidebar for user clarity
         st.sidebar.write(payload)
+
         try:
             # Make API request
             response = requests.post(api_url, json=payload)
             response_data = response.json()
 
-            # Display Prediction
+            # Check if response status is 200 (success)
             if response.status_code == 200:
-            #     # Prepare data
-            #     labels = list(response_data['Top 5 Crimes'].keys())
-            #     values = list(response_data['Top 5 Crimes'].values())
-            #   # Convert values to percentages
-            #     percentages = [v * 100 for v in values]
+                # Scroll to the graph section
+                st.markdown("<a name='graph_section'></a>", unsafe_allow_html=True)
 
-            #     # Create a bar chart with Plotly
-            #     fig = go.Figure()
+                if st.session_state.get("scroll_to_graph", False):
+                    # Reset the scroll flag
+                    st.session_state.scroll_to_graph = False
+                    # Scroll to the graph anchor
+                    st.markdown(
+                        """
+                        <script>
+                            document.querySelector("a[name='graph_section']").scrollIntoView({ behavior: 'smooth' });
+                        </script>
+                        """,
+                        unsafe_allow_html=True,
+                    )
 
-            #     # Add bars
-            #     fig.add_trace(go.Bar(
-            #         x=labels,
-            #         y=percentages,
-            #         text=[f"{p:.1f}%" for p in percentages],  # Display percentages on bars
-            #         textposition='outside',  # Position text outside the bars
-            #         marker_color='skyblue'
-            #     ))
-
-            #     # Customize layout
-            #     fig.update_layout(
-            #         title="Top 5 Crimes as Percentage",
-            #         xaxis_title="Crimes",
-            #         yaxis_title="Percentage (%)",
-            #         xaxis=dict(tickangle=-45),  # Rotate x-axis labels
-            #         template="plotly_white"  # Clean white background style
-            #     )
-
-            #     # Display the chart in Streamlit
-            #     st.sidebar.plotly_chart(fig)
-
-                # Extract labels, probabilities, and counts
+                # Extract labels, probabilities, and counts from response
                 labels = list(response_data["crime_types_probability"].keys())
-                probabilities = [v * 100 for v in response_data["crime_types_probability"].values()]  # Convert to percentages
+                probabilities = [v * 100 for v in response_data["crime_types_probability"].values()]  # Convert to percentage
                 counts = list(response_data["crime_types_count"].values())
 
-                # Create a grouped bar chart
+
+                # Create a grouped bar chart for visualizing probabilities and counts
                 fig = go.Figure()
 
                 # Add probabilities bar
                 fig.add_trace(go.Bar(
                     x=labels,
                     y=probabilities,
-                    name="Probability (%)",
-                    text=[f"{p:.1f}%" for p in probabilities],  # Show percentages on bars
+                    name="Likelihood of Offence Occurring (%)",
+                    text=[f"{p:.1f}%" for p in probabilities],  # Show percentage text
                     textposition='outside',
                     marker_color='skyblue'
                 ))
@@ -399,28 +287,30 @@ if st.sidebar.button("Get Prediction"):
                 fig.add_trace(go.Bar(
                     x=labels,
                     y=counts,
-                    name="Counts",
-                    text=[f"{c}" for c in counts],  # Show counts on bars
+                    name="Probable No. of Occurrences",
+                    text=[f"{c}" for c in counts],  # Show count text
                     textposition='outside',
                     marker_color='orange'
                 ))
 
-                # Customize layout
+                # Customize layout for a more informative and clean display
                 fig.update_layout(
-                    title="Crime Types: Probability and Counts",
+                    title="Crime Types: Likelihood and Counts",
                     xaxis_title="Crime Types",
-                    yaxis_title="Value",
+                    yaxis_title="Values",
                     xaxis=dict(tickangle=-45),  # Rotate x-axis labels
                     barmode='group',  # Group bars side by side
                     template="plotly_white",  # Clean background style
                     legend=dict(title="Metrics"),
+                    margin=dict(t=50, b=50),  # Add margin for better readability
                 )
 
-                # Display chart in Streamlit
+                # Display the chart
                 st.plotly_chart(fig)
 
             else:
                 st.sidebar.error("Failed to retrieve a valid prediction. Please check your inputs or API.")
+
         except Exception as e:
             st.sidebar.error(f"An error occurred: {e}")
     else:
