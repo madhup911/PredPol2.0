@@ -10,18 +10,19 @@ from streamlit_folium import st_folium
 from datetime import datetime, timedelta
 import plotly.graph_objects as go
 from folium import LayerControl
-from folium.plugins import Fullscreen
-import branca.colormap as cm  # For generating color maps
 from branca.colormap import LinearColormap
-from functools import partial
 import os
-from branca.element import Template, MacroElement
+import plotly.express as px
 
 # Page Title
-st.title("Risky Predictive Front")
+st.title("PredPol 2.0: Crime Predictions")
 
 # Function to retrieve the Ward using longitude and latitude
 csv_path = os.path.join("raw_data", "ward_demographics_boundaries.csv")
+
+# Function to retrieve the Ward using longitude and latitude
+
+st.session_state.ward_bound = pd.read_csv(csv_path)
 
 # Simplify and Cache GeoDataFrame
 @st.cache_data
@@ -45,16 +46,18 @@ def find_ward(lat, lon, geodataframe):
 # Introduction
 st.markdown(
     """
-    Welcome to the **Risky Predictive Front**! This app allows you to interact with a predictive model for predicting offenses.
-    Simply provide the required parameters below, and you'll receive a prediction instantly.
 
-    ### How It Works
-    1. Select a ward from the interactive map.
-    2. Specify the necessary details.
-    3. We call the predictive API to estimate.
-    4. View the prediction right here!
+    Predict top crimes and incidents in Chicago using 2023-2024 crime data.
 
-    Let's get started 🚔
+    **Note:** This app does not account for biases in historical data.
+
+    ### How to Use
+
+    1) Pick a Date and Time
+    2) Select a Ward on the map. Here, also browse demographics of the Ward.
+    3) Click "Get Prediction."
+
+    Let's go! :rocket:
     """
 )
 
@@ -156,7 +159,7 @@ folium.LayerControl().add_to(m)
 m.save("map_with_legend.html")
 
 # Render the map using st_folium
-map_output = st_folium(m, height=450, width=600)
+map_output = st_folium(m, height=450, width=700)
 
 # Handle map clicks
 if map_output.get('last_clicked'):
@@ -179,12 +182,12 @@ else:
 # Function to return middle time for a range based on category
 def get_middle_time_for_category(category, selected_date):
     time_ranges = {
-        "Late Evening": (0, 6),     # Midnight (00:00) to 06:00
-        "Early Morning": (6, 9),    # 06:00 to 09:00
-        "Late Morning": (9, 12),    # 09:00 to 12:00
-        "Early Noon": (12, 15),     # 12:00 to 15:00
-        "Late Noon": (15, 18),      # 15:00 to 18:00
-        "Early Evening": (18, 24)   # 18:00 to Midnight (24:00)
+        "Late Night (00:00 to 06:00)": (0, 6),     # Midnight (00:00) to 06:00
+        "Early Morning (06:00 to 09:00)": (6, 9),    # 06:00 to 09:00
+        "Late Morning (09:00 to 12:00)": (9, 12),    # 09:00 to 12:00
+        "Early Noon (12:00 to 15:00)": (12, 15),     # 12:00 to 15:00
+        "Late Noon (15:00 to 18:00)": (15, 18),      # 15:00 to 18:00
+        "Early Night (18:00 to 24:00)": (18, 24)   # 18:00 to Midnight (24:00)
     }
 
     # Get the time range for the selected category
@@ -202,7 +205,9 @@ def get_middle_time_for_category(category, selected_date):
 selected_date = st.sidebar.date_input("Select a Date", datetime.today())
 
 # Sidebar: Dropdown for categories
-categories = ["Late Evening", "Early Morning", "Late Morning", "Early Noon", "Late Noon", "Early Evening"]
+categories = ["Late Night (00:00 to 06:00)", "Early Morning (06:00 to 09:00)", \
+        "Late Morning (09:00 to 12:00)", "Early Noon (12:00 to 15:00)", \
+            "Late Noon (15:00 to 18:00)", "Early Night (18:00 to 24:00)"]
 selected_category = st.sidebar.selectbox("Select a Time Category", categories)
 
 # Get and display the middle time
@@ -223,7 +228,7 @@ st.sidebar.markdown(
     """
     ---
     ### Make a Prediction
-    Once all parameters are set, click the button below to retrieve an offense prediction from the API.
+    Once all parameters are set, click the 'Get Prediction' button below to retrieve an offense prediction.
     """
 )
 
@@ -239,7 +244,9 @@ if st.sidebar.button("Get Prediction"):
         }
 
         # Show payload in sidebar for user clarity
-        st.sidebar.write(payload)
+        st.sidebar.write(f"Selected Ward is : {selected_ward}")
+        st.sidebar.write(f"Selected Date is : {selected_date}")
+        st.sidebar.write(f"Selected Time of Day is : {selected_category}")
 
         try:
             # Make API request
@@ -248,27 +255,10 @@ if st.sidebar.button("Get Prediction"):
 
             # Check if response status is 200 (success)
             if response.status_code == 200:
-                # Scroll to the graph section
-                st.markdown("<a name='graph_section'></a>", unsafe_allow_html=True)
-
-                if st.session_state.get("scroll_to_graph", False):
-                    # Reset the scroll flag
-                    st.session_state.scroll_to_graph = False
-                    # Scroll to the graph anchor
-                    st.markdown(
-                        """
-                        <script>
-                            document.querySelector("a[name='graph_section']").scrollIntoView({ behavior: 'smooth' });
-                        </script>
-                        """,
-                        unsafe_allow_html=True,
-                    )
-
                 # Extract labels, probabilities, and counts from response
                 labels = list(response_data["crime_types_probability"].keys())
                 probabilities = [v * 100 for v in response_data["crime_types_probability"].values()]  # Convert to percentage
                 counts = list(response_data["crime_types_count"].values())
-
 
                 # Create a grouped bar chart for visualizing probabilities and counts
                 fig = go.Figure()
@@ -292,6 +282,8 @@ if st.sidebar.button("Get Prediction"):
                     textposition='outside',
                     marker_color='orange'
                 ))
+                # Calculate the maximum value across all data series
+                max_value = max(probabilities)
 
                 # Customize layout for a more informative and clean display
                 fig.update_layout(
@@ -301,12 +293,74 @@ if st.sidebar.button("Get Prediction"):
                     xaxis=dict(tickangle=-45),  # Rotate x-axis labels
                     barmode='group',  # Group bars side by side
                     template="plotly_white",  # Clean background style
-                    legend=dict(title="Metrics"),
-                    margin=dict(t=50, b=50),  # Add margin for better readability
+                    legend=dict(
+                        title="Metrics",
+                        orientation="h",  # Set legend orientation to horizontal
+                        yanchor="top",  # Align the legend to the bottom of the chart
+                        y=1.2,  # Position the legend below the chart (adjust as needed)
+                        xanchor="center",  # Center the legend horizontally
+                        x=0.5
+                    ),
+                    margin=dict(t=100, b=100),  # Add margin for better readability
+                    yaxis=dict(
+                        title="Values",  # Y-axis title
+                        range=[0, max_value * 1.1],  # Dynamically set to 10% more than the max value
+                        automargin=True  # Automatically adjust for data labels
+                    )
                 )
 
                 # Display the chart
                 st.plotly_chart(fig)
+
+                # Renaming the columns
+                st.session_state.ward_bound.rename(columns=layer_name_mapping, inplace=True)
+
+                # Step 2: Filter data based on the selected ward
+                selected_ward_data = st.session_state.ward_bound[st.session_state.ward_bound['Ward'] == selected_ward]
+
+                # Now we can extract the relevant demographic data for the selected ward
+                race_data = selected_ward_data[[
+                    "White Population (%)", "Black Population (%)", "Asian Population (%)", "Hispanic Population (%)"
+                ]]
+                income_data = selected_ward_data[[
+                    "Income <$25k (%)", "Income $25k-$50k (%)", "Income $50k-$100k (%)", "Income $100k-$150k (%)", "Income >$150k (%)"
+                ]]
+
+                # Demographic Breakdown for the Selected Ward
+                st.subheader(f"Demographic Breakdown for Ward: {selected_ward}")
+
+                # 1. Pie Chart for Race Distribution
+                race_values = race_data.iloc[0].values  # Get the first row values for the selected ward
+                race_labels = race_data.columns
+
+                race_fig = px.pie(values=race_values, names=race_labels, title="Race Distribution")
+                st.plotly_chart(race_fig)
+
+                # # 2. Pie Chart for Ethnicity Distribution
+                # ethnicity_values = [selected_ward_data["Hispanic Population (%)"].iloc[0],
+                #                     100 - selected_ward_data["Hispanic Population (%)"].iloc[0]]
+                # ethnicity_labels = ["Hispanic", "Non-Hispanic"]
+
+                # ethnicity_fig = px.pie(values=ethnicity_values, names=ethnicity_labels, title="Ethnicity Distribution")
+                # st.plotly_chart(ethnicity_fig)
+
+                # 3. Bar Chart for Income Distribution
+                income_values = income_data.iloc[0].values  # Get the first row values for the selected ward
+                income_labels = income_data.columns
+
+                income_fig = go.Figure(go.Bar(
+                    x=income_labels,
+                    y=income_values,
+                    marker_color='lightcoral'
+                ))
+                income_fig.update_layout(
+                    title="Income Distribution",
+                    xaxis_title="Income Ranges",
+                    yaxis_title="Percentage (%)",
+                    template="plotly_white",
+                )
+                st.plotly_chart(income_fig)
+
 
             else:
                 st.sidebar.error("Failed to retrieve a valid prediction. Please check your inputs or API.")
