@@ -1,6 +1,5 @@
 import streamlit as st
 import requests
-import pydeck as pdk
 from datetime import datetime
 import  pandas as pd
 import geopandas as gpd
@@ -13,18 +12,26 @@ import plotly.graph_objects as go
 from folium import LayerControl
 from folium.plugins import Fullscreen
 import branca.colormap as cm  # For generating color maps
+from branca.colormap import LinearColormap
+from functools import partial
+import os
 
 # Page Title
 st.title("Risky Predictive Front")
 
 # Function to retrieve the Ward using longitude and latitude
-ward_bound = pd.read_csv("raw_data/ward_demographics_boundaries.csv")
+csv_path = os.path.join("raw_data", "ward_demographics_boundaries.csv")
 
-# Convert WKT strings to Shapely geometry objects
-ward_bound['the_geom'] = ward_bound['the_geom'].apply(wkt.loads)
-
-# Create a GeoDataFrame
-gdf = gpd.GeoDataFrame(ward_bound, geometry='the_geom', crs="EPSG:4326")
+# Simplify and Cache GeoDataFrame
+@st.cache_data
+def load_and_process_data(csv_path):
+    ward_bound = pd.read_csv(csv_path)
+    # Convert WKT strings to Shapely geometry objects
+    ward_bound['the_geom'] = ward_bound['the_geom'].apply(wkt.loads)
+    # Create a GeoDataFrame
+    gdf = gpd.GeoDataFrame(ward_bound, geometry='the_geom', crs="EPSG:4326")
+    gdf['the_geom'] = gdf['the_geom'].simplify(tolerance=0.001, preserve_topology=True)
+    return gdf
 
 # Function to find the ward for a given latitude and longitude
 def find_ward(lat, lon, geodataframe):
@@ -63,107 +70,60 @@ if 'selected_coords' not in st.session_state:
 def get_pos(lat, lng):
     return lat, lng
 
-# # Sample Chicago coordinates
-# chicago_coords = [41.8781, -87.6298]
+# Load data
+gdf = load_and_process_data(csv_path)
 
-# # Create the Folium map centered on Chicago
-# m = folium.Map(location=chicago_coords, zoom_start=10)
+# Define a standalone style function
+def style_function(feature, colormap, column_name):
+    value = feature['properties'][column_name]
+    return {
+        "fillColor": colormap(value),
+        "color": "blue",        # Boundary color
+        "weight": 1.5,          # Line weight
+        "fillOpacity": 0.6,     # Transparency
+    }
 
-# # Add ward boundaries to the map with custom highlighting
-# def style_function(feature):
-#     """Default style for all ward boundaries."""
-#     return {
-#         "fillColor": "#ADD8E6",  # Light blue fill
-#         "color": "blue",         # Default boundary color
-#         "weight": 1.5,           # Default line weight
-#         "fillOpacity": 0.2,      # Slight transparency
-#     }
+# Define a highlight function
+def highlight_function(feature, colormap, column_name):
+    value = feature['properties'][column_name]
+    return {
+        "fillColor": colormap(value),
+        "color": "red",         # Highlight boundary color
+        "weight": 2,            # Slightly thicker boundary
+        "fillOpacity": 0.8,     # Less transparency when highlighted
+    }
 
-# # --- Helper Function for Color Styling ---
-# def style_function(column_name):
-#     """Generates a style function for choropleth-like layers."""
-#     return lambda feature: {
-#         "fillColor": "#ffeda0" if feature['properties'][column_name] is None else "#31a354",
-#         "color": "black",
-#         "weight": 0.5,
-#         "fillOpacity": feature['properties'][column_name] / 100 if feature['properties'][column_name] else 0.3,
-#     }
-
-# def highlight_function(feature):
-#     """Style applied when a ward boundary is clicked or hovered."""
-#     return {
-#         "fillColor": "#FF0000",  # Red fill for the clicked ward
-#         "color": "red",          # Red boundary color
-#         "weight": 3,             # Thicker boundary line
-#         "fillOpacity": 0.4,      # Slightly more opaque fill
-#     }
-
-# folium.GeoJson(
-#     gdf,
-#     name="Ward Boundaries",
-#     tooltip=folium.features.GeoJsonTooltip(fields=["Ward"], aliases=["Ward:"]),
-#     style_function=lambda feature: {
-#         "fillColor": "#ADD8E6",
-#         "color": "blue",
-#         "weight": 1.5,
-#         "fillOpacity": 0.2,
-#     },
-#     highlight_function=highlight_function,  # Custom highlight on interaction
-# ).add_to(m)
-
-
+# Function to create a layer
 def create_layer(gdf, column_name, layer_name, show_layer=False):
     """
     Creates a Folium GeoJson layer with dynamic color styling based on column values.
-
-    Parameters:
-    - gdf: GeoDataFrame containing the data
-    - column_name: Column name in the GeoDataFrame for styling
-    - layer_name: Name of the layer to display on the map
     """
-    # Create a color map ranging from green (low) to red (high)
-    colormap = cm.LinearColormap(['green', 'yellow', 'red'],
-                                 vmin=gdf[column_name].min(),
-                                 vmax=gdf[column_name].max())
+    # Calculate min and max values for the column
+    vmin = gdf[column_name].min()
+    vmax = gdf[column_name].max()
 
-    # Define the style function using the colormap
-    def style_function(feature):
-        value = feature['properties'][column_name]
-        return {
-            "fillColor": colormap(value),
-            "color": "blue",       # Boundary color
-            "weight": 1.5,         # Line weight
-            "fillOpacity": 0.6,    # Transparency
-        }
+    # Create a colormap
+    colormap = LinearColormap(['green', 'yellow', 'red'], vmin=vmin, vmax=vmax)
 
-    # Define the highlight function
-    def highlight_function(feature):
-        return {
-            "fillColor": colormap(feature['properties'][column_name]),
-            "color": "red",        # Highlight boundary color
-            "weight": 2,           # Slightly thicker boundary
-            "fillOpacity": 0.8,    # Less transparency when highlighted
-        }
+    # Use partial to pass fixed arguments to the style functions
+    layer_style_function = partial(style_function, colormap=colormap, column_name=column_name)
+    layer_highlight_function = partial(highlight_function, colormap=colormap, column_name=column_name)
 
     # Add the GeoJson layer to the map
     folium.GeoJson(
         gdf,
         name=layer_name,
         tooltip=folium.features.GeoJsonTooltip(
-            fields=["Ward"] + percentage_columns,  # Include all percentage columns in the tooltip
-            aliases=["Ward:"] + [f"{col}:" for col in percentage_columns],  # Add column aliases
+            fields=["Ward"] + percentage_columns,
+            aliases=["Ward:"] + [f"{col}:" for col in percentage_columns],
             localize=True
         ),
-        style_function=style_function,
-        highlight_function=highlight_function,
+        style_function=layer_style_function,
+        highlight_function=layer_highlight_function,
         show=show_layer,  # Control whether the layer is shown initially
     ).add_to(m)
 
-# Create the map
-chicago_coords = [41.8781, -87.6298]  # Latitude and Longitude of Chicago
-m = folium.Map(location=chicago_coords, zoom_start=10)
-
-# Add layers for each percentage column
+# Percentage columns to visualize
 percentage_columns = [
     "Race-White_pct",
     "Race-Black_pct",
@@ -176,10 +136,13 @@ percentage_columns = [
     "Income-150000_plus_pct"
 ]
 
-# Load only the first layer by default, others will be hidden initially
+# Create the map
+chicago_coords = [41.8781, -87.6298]  # Latitude and Longitude of Chicago
+m = folium.Map(location=chicago_coords, zoom_start=10)
+
+# Load only the first layer by default
 for i, column in enumerate(percentage_columns):
     create_layer(gdf, column, column, show_layer=(i == 0))  # Show only the first layer
-
 
 # Add a layer control to switch between layers
 folium.LayerControl().add_to(m)
@@ -187,29 +150,120 @@ folium.LayerControl().add_to(m)
 # Render the map using st_folium
 map_output = st_folium(m, height=450, width=600)
 
-# Function to get clicked latitude
-def get_click_lat():
-    return map_output['last_clicked']['lat']
-
-# Function to get clicked longitude
-def get_click_lng():
-    return map_output['last_clicked']['lng']
-
 # Handle map clicks
 if map_output.get('last_clicked'):
-    st.session_state.selected_coords = get_pos(get_click_lat(), get_click_lng())
+    lat = map_output['last_clicked']['lat']
+    lon = map_output['last_clicked']['lng']
+    st.session_state.selected_coords = (lat, lon)
 
-# Display coordinates
-if st.session_state.selected_coords:
-    selected_coords = st.session_state.selected_coords
-    selected_latitude = selected_coords[0]
-    selected_longitude = selected_coords[1]
-    selected_ward = find_ward(selected_latitude,selected_longitude,gdf)
-    st.sidebar.write(f"**Latitude:** {selected_latitude}")
-    st.sidebar.write(f"**Longitude:** {selected_longitude}")
-    st.sidebar.write(f"**Ward:** {selected_ward}")
+# Display clicked coordinates and ward details
+if st.session_state.get('selected_coords'):
+    selected_lat, selected_lon = st.session_state.selected_coords
+    selected_ward = find_ward(selected_lat, selected_lon, gdf) # Replace with your `find_ward` function logic if needed
+    #st.sidebar.write(f"**Latitude:** {selected_lat}")
+    #st.sidebar.write(f"**Longitude:** {selected_lon}")
+    #st.sidebar.write(f"**Ward:** {selected_ward if selected_ward else 'Not Found'}")
 else:
     st.sidebar.write("Click on the map to select a location.")
+
+# def create_layer(gdf, column_name, layer_name, show_layer=False):
+#     """
+#     Creates a Folium GeoJson layer with dynamic color styling based on column values.
+
+#     Parameters:
+#     - gdf: GeoDataFrame containing the data
+#     - column_name: Column name in the GeoDataFrame for styling
+#     - layer_name: Name of the layer to display on the map
+#     """
+#     # Create a color map ranging from green (low) to red (high)
+#     colormap = cm.LinearColormap(['green', 'yellow', 'red'],
+#                                  vmin=gdf[column_name].min(),
+#                                  vmax=gdf[column_name].max())
+
+#     # Define the style function using the colormap
+#     def style_function(feature):
+#         value = feature['properties'][column_name]
+#         return {
+#             "fillColor": colormap(value),
+#             "color": "blue",       # Boundary color
+#             "weight": 1.5,         # Line weight
+#             "fillOpacity": 0.6,    # Transparency
+#         }
+
+#     # Define the highlight function
+#     def highlight_function(feature):
+#         return {
+#             "fillColor": colormap(feature['properties'][column_name]),
+#             "color": "red",        # Highlight boundary color
+#             "weight": 2,           # Slightly thicker boundary
+#             "fillOpacity": 0.8,    # Less transparency when highlighted
+#         }
+
+#     # Add the GeoJson layer to the map
+#     folium.GeoJson(
+#         gdf,
+#         name=layer_name,
+#         tooltip=folium.features.GeoJsonTooltip(
+#             fields=["Ward"] + percentage_columns,  # Include all percentage columns in the tooltip
+#             aliases=["Ward:"] + [f"{col}:" for col in percentage_columns],  # Add column aliases
+#             localize=True
+#         ),
+#         style_function=style_function,
+#         highlight_function=highlight_function,
+#         show=show_layer,  # Control whether the layer is shown initially
+#     ).add_to(m)
+
+# # Create the map
+# chicago_coords = [41.8781, -87.6298]  # Latitude and Longitude of Chicago
+# m = folium.Map(location=chicago_coords, zoom_start=10)
+
+# # Add layers for each percentage column
+# percentage_columns = [
+#     "Race-White_pct",
+#     "Race-Black_pct",
+#     "Race-Asian_pct",
+#     "Ethnicity-Hispanic_pct",
+#     "Income-24999_minus_pct",
+#     "Income-25000-49999_pct",
+#     "Income-50000-99999_pct",
+#     "Income-100000-149999_pct",
+#     "Income-150000_plus_pct"
+# ]
+
+# # Load only the first layer by default, others will be hidden initially
+# for i, column in enumerate(percentage_columns):
+#     create_layer(gdf, column, column, show_layer=(i == 0))  # Show only the first layer
+
+
+# # Add a layer control to switch between layers
+# folium.LayerControl().add_to(m)
+
+# # Render the map using st_folium
+# map_output = st_folium(m, height=450, width=600)
+
+# # Function to get clicked latitude
+# def get_click_lat():
+#     return map_output['last_clicked']['lat']
+
+# # Function to get clicked longitude
+# def get_click_lng():
+#     return map_output['last_clicked']['lng']
+
+# # Handle map clicks
+# if map_output.get('last_clicked'):
+#     st.session_state.selected_coords = get_pos(get_click_lat(), get_click_lng())
+
+# # Display coordinates
+# if st.session_state.selected_coords:
+#     selected_coords = st.session_state.selected_coords
+#     selected_latitude = selected_coords[0]
+#     selected_longitude = selected_coords[1]
+#     selected_ward = find_ward(selected_latitude,selected_longitude,gdf)
+#     st.sidebar.write(f"**Latitude:** {selected_latitude}")
+#     st.sidebar.write(f"**Longitude:** {selected_longitude}")
+#     st.sidebar.write(f"**Ward:** {selected_ward}")
+# else:
+#     st.sidebar.write("Click on the map to select a location.")
 
 
 
@@ -264,7 +318,7 @@ if selected_category:
 # weekend = is_weekend(selected_date)
 
 # API URL
-api_url = st.text_input("API URL", "https://rpp-589897242504.europe-west1.run.app/predict")
+api_url = "https://rpp2-589897242504.europe-west1.run.app/predict"
 
 st.sidebar.markdown(
     """
@@ -276,13 +330,13 @@ st.sidebar.markdown(
 
 # Call API and Get Prediction
 if st.sidebar.button("Get Prediction"):
-    if api_url and selected_ward and middle_time and selected_latitude and selected_longitude:
+    if api_url and selected_ward and middle_time and selected_lat and selected_lon:
         # Prepare API request payload
         payload = {
             "ward": selected_ward,
             "date_of_occurrence": middle_time,
-            "latitude": selected_latitude,
-            "longitude": selected_longitude,
+            "latitude": selected_lat,
+            "longitude": selected_lon,
         }
         #st.write(payload)
         st.sidebar.write(payload)
@@ -293,35 +347,78 @@ if st.sidebar.button("Get Prediction"):
 
             # Display Prediction
             if response.status_code == 200:
-                # Prepare data
-                labels = list(response_data['Top 5 Crimes'].keys())
-                values = list(response_data['Top 5 Crimes'].values())
-              # Convert values to percentages
-                percentages = [v * 100 for v in values]
+            #     # Prepare data
+            #     labels = list(response_data['Top 5 Crimes'].keys())
+            #     values = list(response_data['Top 5 Crimes'].values())
+            #   # Convert values to percentages
+            #     percentages = [v * 100 for v in values]
 
-                # Create a bar chart with Plotly
+            #     # Create a bar chart with Plotly
+            #     fig = go.Figure()
+
+            #     # Add bars
+            #     fig.add_trace(go.Bar(
+            #         x=labels,
+            #         y=percentages,
+            #         text=[f"{p:.1f}%" for p in percentages],  # Display percentages on bars
+            #         textposition='outside',  # Position text outside the bars
+            #         marker_color='skyblue'
+            #     ))
+
+            #     # Customize layout
+            #     fig.update_layout(
+            #         title="Top 5 Crimes as Percentage",
+            #         xaxis_title="Crimes",
+            #         yaxis_title="Percentage (%)",
+            #         xaxis=dict(tickangle=-45),  # Rotate x-axis labels
+            #         template="plotly_white"  # Clean white background style
+            #     )
+
+            #     # Display the chart in Streamlit
+            #     st.sidebar.plotly_chart(fig)
+
+                # Extract labels, probabilities, and counts
+                labels = list(response_data["crime_types_probability"].keys())
+                probabilities = [v * 100 for v in response_data["crime_types_probability"].values()]  # Convert to percentages
+                counts = list(response_data["crime_types_count"].values())
+
+                # Create a grouped bar chart
                 fig = go.Figure()
 
-                # Add bars
+                # Add probabilities bar
                 fig.add_trace(go.Bar(
                     x=labels,
-                    y=percentages,
-                    text=[f"{p:.1f}%" for p in percentages],  # Display percentages on bars
-                    textposition='outside',  # Position text outside the bars
+                    y=probabilities,
+                    name="Probability (%)",
+                    text=[f"{p:.1f}%" for p in probabilities],  # Show percentages on bars
+                    textposition='outside',
                     marker_color='skyblue'
+                ))
+
+                # Add counts bar
+                fig.add_trace(go.Bar(
+                    x=labels,
+                    y=counts,
+                    name="Counts",
+                    text=[f"{c}" for c in counts],  # Show counts on bars
+                    textposition='outside',
+                    marker_color='orange'
                 ))
 
                 # Customize layout
                 fig.update_layout(
-                    title="Top 5 Crimes as Percentage",
-                    xaxis_title="Crimes",
-                    yaxis_title="Percentage (%)",
+                    title="Crime Types: Probability and Counts",
+                    xaxis_title="Crime Types",
+                    yaxis_title="Value",
                     xaxis=dict(tickangle=-45),  # Rotate x-axis labels
-                    template="plotly_white"  # Clean white background style
+                    barmode='group',  # Group bars side by side
+                    template="plotly_white",  # Clean background style
+                    legend=dict(title="Metrics"),
                 )
 
-                # Display the chart in Streamlit
-                st.sidebar.plotly_chart(fig)
+                # Display chart in Streamlit
+                st.plotly_chart(fig)
+
             else:
                 st.sidebar.error("Failed to retrieve a valid prediction. Please check your inputs or API.")
         except Exception as e:
