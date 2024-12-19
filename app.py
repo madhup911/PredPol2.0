@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 import folium
 from streamlit_folium import st_folium
 import plotly.graph_objects as go
-from folium.plugins import LayerControl
+from folium import LayerControl
 import branca.colormap as cm
 import os
 
