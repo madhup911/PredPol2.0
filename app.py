@@ -5,9 +5,9 @@ import  pandas as pd
 import geopandas as gpd
 from shapely.geometry import Point
 from shapely import wkt
+from datetime import datetime, timedelta
 import folium
 from streamlit_folium import st_folium
-from datetime import datetime, timedelta
 import plotly.graph_objects as go
 from folium import LayerControl
 from branca.colormap import LinearColormap
@@ -61,8 +61,6 @@ st.markdown(
     """
 )
 
-# Input Parameters
-st.sidebar.header("Configure Input Parameters")
 
 
 # Initialize session state for coordinates
@@ -75,8 +73,11 @@ if "scroll_to_graph" not in st.session_state:
 
 # Function to get position as a tuple
 @st.cache_data
-def get_pos(lat, lng):
-    return lat, lng
+def load_ward_data():
+    csv_path = os.path.join("raw_data", "ward_demographics_boundaries.csv")
+    ward_bound = pd.read_csv(csv_path)
+    ward_bound['the_geom'] = ward_bound['the_geom'].apply(wkt.loads)
+    return gpd.GeoDataFrame(ward_bound, geometry='the_geom', crs="EPSG:4326")
 
 # Load data
 gdf = load_and_process_data(csv_path)
@@ -199,9 +200,17 @@ def get_middle_time_for_category(category, selected_date):
         middle_time = datetime.combine(selected_date, datetime.min.time()) + timedelta(hours=middle_hour)
         return middle_time.strftime("%Y-%m-%d %H:%M")  # Format as Date and Time string (24-hour format)
 
+# Function to find the ward for given coordinates
+@st.cache_data
+def find_ward(lat, lon, geodataframe):
+    point = Point(lon, lat)
+    for _, row in geodataframe.iterrows():
+        if row['the_geom'].contains(point):
+            return row['Ward']
     return None
 
-# Sidebar: Date picker
+# Sidebar Inputs
+st.sidebar.header("Configure Input Parameters")
 selected_date = st.sidebar.date_input("Select a Date", datetime.today())
 
 # Sidebar: Dropdown for categories
@@ -209,6 +218,7 @@ categories = ["Late Night (00:00 to 06:00)", "Early Morning (06:00 to 09:00)", \
         "Late Morning (09:00 to 12:00)", "Early Noon (12:00 to 15:00)", \
             "Late Noon (15:00 to 18:00)", "Early Night (18:00 to 24:00)"]
 selected_category = st.sidebar.selectbox("Select a Time Category", categories)
+api_url = st.sidebar.text_input("API URL", "https://rpp-589897242504.europe-west1.run.app/predict")
 
 # Get and display the middle time
 if selected_category:
